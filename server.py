@@ -58,10 +58,10 @@ def main():
     while True:
         client, addr = server.accept()
         client.send("Enter username: ".encode())
-        username = client.recv(1024).decode()
+        username = client.recv(1024).decode().strip()  # Use .strip() to remove extra whitespace
         if username in clients:
             client.send("Username already taken!".encode())
-            client.close()
+            client.close
             continue
         clients[username] = client
         print(f"{username} connected from {addr}")

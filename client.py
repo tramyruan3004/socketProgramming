@@ -20,7 +20,12 @@ def main():
     client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     client.connect((HOST, PORT))
     
-    username = input("Enter your username: ")
+    # Wait for the server's prompt
+    prompt = client.recv(1024).decode()
+    print(prompt, end="")  # Print the prompt without adding a newline
+
+    # Get username from user
+    username = input()
     client.send(username.encode())
 
     threading.Thread(target=receive_messages, args=(client,), daemon=True).start()
