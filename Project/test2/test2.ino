@@ -57,8 +57,8 @@ void loop() {
   Serial.println(sensorValue);
 //  Serial.print("% (");
 //  Serial.print(moistureStatus);
-//  Serial.print(") | Water Level: ");
-//  Serial.println(waterStatus);
+  Serial.print(") | Water Level: ");
+  Serial.println(waterStatus);
   
   // Turn off all LEDs initially
 //  digitalWrite(LEDG, LOW);
