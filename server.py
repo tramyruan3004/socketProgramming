@@ -1,12 +1,62 @@
 import socket
 import threading
+import hashlib
+import os
 
 SERVER = ("0.0.0.0", 2222)
 shutdown_flag = False
 clients = {}  # {username: socket}
 groups = {}  # {group_name: {'members': set(), 'owner': username}}
 lock = threading.Lock()
+users_file = "users.txt"
 
+def hash_password(password):
+    return hashlib.sha256(password.encode()).hexdigest()
+
+def load_user():
+    users = {}
+    if os.path.exists(users_file):
+        with open(users_file, "r") as f:
+            for line in f:
+                username, password_hash = line.strip().split(":")
+                users[username] = password_hash
+    return users
+
+def save_user(username, password):
+    with open(users_file, "a") as f:
+        f.write(f"{username}:{hash_password(password)}\n")
+
+def authenticate(client_socket):
+    users = load_user()
+    client_socket.send("Login (L) or Register (R): ".encode())
+    choice = client_socket.recv(1024).decode().strip().lower()
+
+    while choice not in ["l", "r"]:
+        client_socket.send("Invalid choice. Please enter 'L' to login and 'R' to register: ".encode())
+        choice = client_socket.recv(1024).decode().strip().lower()
+
+    client_socket.send("Enter username: ".encode())
+    username = client_socket.recv(1024).decode().strip()
+
+    if choice == "r":
+        if username in users:
+            client_socket.send("Username already exists! Please try again.\n".encode())
+            return None
+        client_socket.send("Enter password: ".encode())
+        password = client_socket.recv(1024).decode().strip()
+        save_user(username, password)
+        client_socket.send("Registration successful! You are now logged in.\n".encode())
+    elif choice == "l":
+        if username not in users:
+            client_socket.send("User not found. Try again.\n".encode())
+            return None
+        client_socket.send("Enter password: ".encode())
+        password = client_socket.recv(1024).decode().strip()
+        if hash_password(password) != users[username]:
+            client_socket.send("Incorrect password. Try again.\n".encode())
+            return None
+        client_socket.send("Login successful! Welcome.\n".encode())
+    return username
 
 def broadcast(message, sender_socket=None):
     with lock:
@@ -20,22 +70,30 @@ def broadcast(message, sender_socket=None):
 
 def handle_client(client_socket):
     global shutdown_flag
-    username = ""
+    username = authenticate(client_socket)
+
+    if not username:
+        client_socket.close()
+        return
+    with lock:
+        clients[username] = client_socket
+    broadcast(f"User {username} joined the chat!", client_socket)
+
     try:
-        # Get username
-        user_reg = False
-        while not user_reg:
-            client_socket.send("Enter username: ".encode())
-            username = client_socket.recv(1024).decode().strip()
-            if username not in clients:
-                user_reg = True
-            else:
-                client_socket.send("Username taken, try again\n".encode())
+        # # Get username
+        # user_reg = False
+        # while not user_reg:
+        #     client_socket.send("Enter username: ".encode())
+        #     username = client_socket.recv(1024).decode().strip()
+        #     if username not in clients:
+        #         user_reg = True
+        #     else:
+        #         client_socket.send("Username taken, try again\n".encode())
 
-        with lock:
-            clients[username] = client_socket
+        # with lock:
+        #     clients[username] = client_socket
 
-        broadcast(f"User {username} connected to the server", client_socket)
+        # broadcast(f"User {username} connected to the server", client_socket)
 
         while not shutdown_flag:
             try:
@@ -245,8 +303,6 @@ def admin_commands():
             shutdown_server()
             break
     print("Admin command thread exited")
-
-
 
 if __name__ == "__main__":
     server_program()

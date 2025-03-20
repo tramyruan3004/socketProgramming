@@ -3,7 +3,8 @@ import threading
 import sys
 import select
 isShutdown = False
-SERVER = ('0.0.0.0', 2222)
+
+SERVER = ('192.168.1.147', 2222)
 
 def receive_messages(client_socket):
     global isShutdown  # Ensure this affects the main thread
@@ -24,6 +25,20 @@ def receive_messages(client_socket):
             isShutdown = True
             break
 
+def send_messages(client_socket):
+    global isShutdown
+    while not isShutdown:
+        try:
+            message = input()
+            if message.lower() == '@quit':
+                print("Disconnecting from server...")
+                isShutdown = True
+                client_socket.sendall(message.encode())
+                client_socket.close()
+                break
+            client_socket.sendall(message.encode())
+        except:
+            break
 
 def client_program():
     global isShutdown
@@ -36,6 +51,12 @@ def client_program():
 
     receive_thread = threading.Thread(target=receive_messages, args=(client,))
     receive_thread.start()
+
+    send_thread = threading.Thread(target=send_messages, args=(client,))
+    send_thread.start()
+
+    receive_thread.join()
+    send_thread.join()
 
     try:
         while not isShutdown:  # Keep checking if we need to shut down
