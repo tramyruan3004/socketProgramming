@@ -146,47 +146,6 @@ def handle_client(client_socket):
                         group_parts = parts[1].split(maxsplit=2)
                         subcmd = group_parts[0].lower()
 
-                        # if subcmd == "set":
-                        #     import re
-                        #     try:
-                        #         match = re.match(r"@group set\s+(\w+)\s+(.+)", message.strip(), re.IGNORECASE)
-                        #         if not match:
-                        #             raise ValueError("Invalid format. Usage: @group set [group_name] [member1, member2, ...]")
-
-                        #         group_name = match.group(1).lower()
-                        #         members_str = match.group(2)
-                        #         members = [m.strip() for m in members_str.split(',') if m.strip()]
-
-                        #         if not group_name:
-                        #             raise ValueError("Group name cannot be empty")
-                        #         if not members:
-                        #             raise ValueError("Must specify at least one valid member")
-
-                        #         with lock:
-                        #             if group_name in groups:
-                        #                 client_socket.send(f"Error: Group '{group_name}' already exists. Please choose a different name.\n".encode())
-                        #                 continue
-
-                        #             valid_members = [m for m in members if m in clients]
-                        #             invalid_members = [m for m in members if m not in clients]
-
-                        #             groups[group_name] = {
-                        #                 'members': set(valid_members),
-                        #                 'owner': username
-                        #             }
-                        #             save_group()
-
-                        #             for member in groups[group_name]['members']:
-                        #                 clients[member].send(f"Group '{group_name}' created with members: {', '.join(valid_members)}\n".encode())
-
-                        #             if invalid_members:
-                        #                 response = f"Warning: Invalid members ignored: {', '.join(invalid_members)}\n"
-                        #                 client_socket.send(response.encode())
-
-                        #     except ValueError as e:
-                        #         client_socket.send(f"Error: {e}. Usage: @group set [group_name] [member1, member2, ...]\n".encode())
-                        #     except Exception as e:
-                        #         client_socket.send(f"Error processing group creation: {str(e)}\n".encode())
                         if subcmd == "set":
                             try:
                                 if len(group_parts) < 2:
@@ -249,7 +208,6 @@ def handle_client(client_socket):
                                     if groups[group_name]['owner'] == username and groups[group_name]['members']:
                                         groups[group_name]['owner'] = list(groups[group_name]['members'])[0]
 
-
                         elif subcmd == "delete":
                             group_name = group_parts[1]
                             with lock:
@@ -259,6 +217,50 @@ def handle_client(client_socket):
                                     client_socket.send(f"Deleted group {group_name}".encode())
                                 else:
                                     client_socket.send("Not authorized or group doesn't exist".encode())
+
+                        elif subcmd == "add":
+                            try:
+                                if len(group_parts) < 3:
+                                    raise ValueError("Missing group name or members")
+                                group_name = group_parts[1].lower()
+                                members_str = " ".join(group_parts[2:])
+                                members_to_add = [m.strip() for m in members_str.split(',') if m.strip()]
+
+                                if not members_to_add:
+                                    client_socket.send("Error: Must specify at least one valid member to add\n".encode())
+                                    continue
+                                with lock:
+                                    if group_name not in groups:
+                                        client_socket.send(f"Error: Group '{group_name}' does not exist\n".encode())
+                                        continue
+                                    
+                                    #check if user is the owner of group chat to add member 
+                                    if username != groups[group_name]['owner']:
+                                        client_socket.send(f"Error: You must be the owner of group '{group_name}' to add members\n".encode())
+                                        continue
+                                    valid_members = [m for m in members_to_add if m in clients]
+                                    invalid_members = [m for m in members_to_add if m not in clients]
+                                    groups[group_name]['members'].update(valid_members)
+                                    save_group()
+
+                                    response = f"Added {', '.join(valid_members)} into '{group_name}'"
+                                    client_socket.send(response.encode())
+                                    
+                                    #notify group members 
+                                    notification = f"[Group {group_name}] {username} added new members: {', '.join(valid_members)}"
+                                    for member in groups[group_name]['members']:
+                                        if member != username and member in clients:
+                                            clients[member].send(notification.encode())
+
+                                    #notify the person that is being add
+                                    for new_member in valid_members:
+                                        if new_member in clients and new_member != username:
+                                            clients[new_member].send(f"You were added to group '{group_name}' by {username}\n".encode())
+                                    
+                                    if invalid_members:
+                                        client_socket.send(f"Warning: Invalid members ignored: {', '.join(invalid_members)}\n".encode())
+                            except Exception as e:
+                                client_socket.send(f"Error adding members to group: {str(e)}\n".encode())
 
                     else:
                         client_socket.send("Invalid command".encode())
