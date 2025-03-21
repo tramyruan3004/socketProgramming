@@ -1,16 +1,9 @@
 {
-    "hhh": {
-        "members": [
-            "sara",
-            "joey",
-            "lixuan"
-        ],
-        "owner": "lixuan"
-    },
     "name": {
         "members": [
-            "sara",
-            "joey"
+            "lixuan",
+            "joey",
+            "sara"
         ],
         "owner": "sara"
     }

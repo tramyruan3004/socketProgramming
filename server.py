@@ -187,29 +187,67 @@ def handle_client(client_socket):
                                 client_socket.send(f"Error creating group: {str(e)}\n".encode())
 
                         elif subcmd == "send":
-                                group_name = group_parts[1]
-                                msg = group_parts[2]
-                                with lock:
-                                    if group_name in groups and username in groups[group_name]['members']:
+                                try:
+                                    if len(group_parts) < 3:
+                                        client_socket.send("Error missing group name or message\n".encode())
+                                        continue
+                                    group_name = group_parts[1]
+                                    msg = " ".join(group_parts[2:])
+                                    with lock:
+                                        #Check if group exist
+                                        if group_name not in groups:
+                                            client_socket.send(f"Error: Group '{group_name}' does not exist\n".encode())
+                                            continue
+                                        #Check if user is a member of group
+                                        if username not in groups[group_name]['members']:
+                                            client_socket.send(f"Error: You are not a member of group '{group_name}'\n".encode())
+                                            continue
+                                        #Send messgae to all members
+                                        sent_count = 0
                                         for member in groups[group_name]['members']:
                                             if member != username and member in clients:
                                                 clients[member].send(f"[Group {group_name}] {username}: {msg}".encode())
+                                                sent_count += 1
+                                except Exception as e:
+                                    client_socket.send(f"Error sending group message: {str(e)}\n".encode())
 
                         elif subcmd == "leave":
-                            group_name = group_parts[1]
-                            with lock:
-                                if group_name in groups and username in groups[group_name]['members']:
+                            try:
+                                if len(group_parts) < 2:
+                                    client_socket.send("Error: Missing group name\n".encode())
+                                    continue
+                                group_name = group_parts[1]
+                                with lock:
+                                    #Check if group exists
+                                    if group_name not in groups:
+                                        client_socket.send(f"Error: Group '{group_name}' does not exist\n".encode())
+                                        continue
+                                    #Check if user is a member
+                                    if username not in groups[group_name]['members']:
+                                        client_socket.send(f"Error: You are not a member of group '{group_name}'\n".encode())
+                                        continue
                                     groups[group_name]['members'].remove(username)
-                                    save_group()
-                                    client_socket.send(f"Left group {group_name}".encode())
+                                    
+                                    #Notify user and members
+                                    client_socket.send(f"Left group '{group_name}'\n".encode())
                                     for member in groups[group_name]['members']:
                                         if member != username and member in clients:
-                                            clients[member].send(f"[Group {group_name}] {username} left the group".encode())
-                                    if groups[group_name]['owner'] == username and len(groups[group_name]['members'])==0:
-                                        del groups[group_name]
-                                        save_group()
-                                    if groups[group_name]['owner'] == username and groups[group_name]['members']:
-                                        groups[group_name]['owner'] = list(groups[group_name]['members'])[0]
+                                            clients[member].send(f"[Group {group_name}] {username} left the group\n".encode())
+                                    
+                                    #If owner leave
+                                    if groups[group_name]['owner'] == username:
+                                        if groups[group_name]['members']:
+                                            new_owner = list(groups[group_name]['members'])[0]
+                                            groups[group_name]['owner'] = new_owner
+                                            if new_owner in clients:
+                                                clients[new_owner].send(f"You are now the owner of group '{group_name}'\n".encode())
+                                            save_group()
+                                        else:
+                                            del groups[group_name]
+                                            client_socket.send(f"Deleted group {group_name}".encode())
+                                            save_group()
+                            except Exception as e:
+                                client_socket.send(f"Error leaving group: {str(e)}\n".encode())
 
                         elif subcmd == "delete":
                             group_name = group_parts[1]
