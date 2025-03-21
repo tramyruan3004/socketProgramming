@@ -4,7 +4,7 @@ import sys
 import select
 isShutdown = False
 
-SERVER = ('192.168.1.147', 2222)
+SERVER = ('127.0.0.1', 2222)
 
 def receive_messages(client_socket):
     global isShutdown  # Ensure this affects the main thread
