@@ -8,6 +8,7 @@ SERVER = ("0.0.0.0", 2222)
 shutdown_flag = False
 clients = {}  # {username: socket}
 groups = {}  # {group_name: {'members': set(), 'owner': username}}
+users = {}
 lock = threading.Lock()
 users_file = "users.txt"
 groups_file = "groups.json"
@@ -16,20 +17,19 @@ def hash_password(password):
     return hashlib.sha256(password.encode()).hexdigest()
 
 def load_user():
-    users = {}
+    global users
     if os.path.exists(users_file):
         with open(users_file, "r") as f:
             for line in f:
                 username, password_hash = line.strip().split(":")
                 users[username] = password_hash
-    return users
 
 def save_user(username, password):
     with open(users_file, "a") as f:
         f.write(f"{username}:{hash_password(password)}\n")
 
 def authenticate(client_socket):
-    users = load_user()
+    load_user()
     client_socket.send("Login (L) or Register (R): ".encode())
     choice = client_socket.recv(1024).decode().strip().lower()
 
@@ -97,7 +97,7 @@ def broadcast(message, sender_socket=None):
 
 
 def handle_client(client_socket):
-    global shutdown_flag
+    global shutdown_flag, users
     username = authenticate(client_socket)
 
     if not username:
@@ -164,8 +164,8 @@ def handle_client(client_socket):
                                         client_socket.send(f"Error: Group '{group_name}' already exists\n".encode())
                                         continue
                                         
-                                    valid_members = [m for m in members if m in clients]
-                                    invalid_members = [m for m in members if m not in clients]
+                                    valid_members = [m for m in members if m in users]
+                                    invalid_members = [m for m in members if m not in users]
                                     
                                     # Add the group creator to the members list if not already included
                                     if username not in valid_members:
@@ -205,6 +205,9 @@ def handle_client(client_socket):
                                     for member in groups[group_name]['members']:
                                         if member != username and member in clients:
                                             clients[member].send(f"[Group {group_name}] {username} left the group".encode())
+                                    if groups[group_name]['owner'] == username and len(groups[group_name]['members'])==0:
+                                        del groups[group_name]
+                                        save_group()
                                     if groups[group_name]['owner'] == username and groups[group_name]['members']:
                                         groups[group_name]['owner'] = list(groups[group_name]['members'])[0]
 
@@ -238,33 +241,98 @@ def handle_client(client_socket):
                                     if username != groups[group_name]['owner']:
                                         client_socket.send(f"Error: You must be the owner of group '{group_name}' to add members\n".encode())
                                         continue
-                                    valid_members = [m for m in members_to_add if m in clients]
-                                    invalid_members = [m for m in members_to_add if m not in clients]
+
+                                    valid_members = [m for m in members_to_add if m in users and m not in groups[group_name]['members']]
+                                    invalid_members = [m for m in members_to_add if m not in users or m in groups[group_name]['members']]
                                     groups[group_name]['members'].update(valid_members)
                                     save_group()
 
-                                    response = f"Added {', '.join(valid_members)} into '{group_name}'"
-                                    client_socket.send(response.encode())
-                                    
-                                    #notify group members 
-                                    notification = f"[Group {group_name}] {username} added new members: {', '.join(valid_members)}"
-                                    for member in groups[group_name]['members']:
-                                        if member != username and member in clients:
-                                            clients[member].send(notification.encode())
-
-                                    #notify the person that is being add
-                                    for new_member in valid_members:
-                                        if new_member in clients and new_member != username:
-                                            clients[new_member].send(f"You were added to group '{group_name}' by {username}\n".encode())
-                                    
                                     if invalid_members:
-                                        client_socket.send(f"Warning: Invalid members ignored: {', '.join(invalid_members)}\n".encode())
+                                        for m in invalid_members:
+                                            no_such_members = []
+                                            existing_members = []
+                                            if m not in users:
+                                                no_such_members.append(m)
+                                            elif m in groups[group_name]['members']:
+                                                existing_members.append(m)
+                                        if no_such_members:
+                                            client_socket.send(f"Warning: Invalid members ignored: {', '.join(no_such_members)}\n".encode())
+                                        if existing_members:
+                                            client_socket.send(f"Warning: Members: {', '.join(existing_members)} are already in the group\n".encode())
+                                    if valid_members:
+                                        response = f"Added {', '.join(valid_members)} into '{group_name}'"
+                                        client_socket.send(response.encode())
+
+                                        #notify group members
+                                        notification = f"[Group {group_name}] {username} added new members: {', '.join(valid_members)}"
+                                        for member in groups[group_name]['members']:
+                                            if member != username and member in clients and member not in valid_members:
+                                                clients[member].send(notification.encode())
+
+                                        #notify the person that is being add
+                                        for new_member in valid_members:
+                                            if new_member in clients and new_member != username:
+                                                clients[new_member].send(f"You were added to group '{group_name}' by {username}".encode())
                             except Exception as e:
                                 client_socket.send(f"Error adding members to group: {str(e)}\n".encode())
+                        
+                        elif subcmd == "kick":
+                            try:
+                                if len(group_parts) < 3:
+                                    raise ValueError("Missing group name or members")
+                                group_name = group_parts[1].lower()
+                                members_str = " ".join(group_parts[2:])
+                                members_to_kick = [m.strip() for m in members_str.split(',') if m.strip()]
 
+                                if not members_to_kick:
+                                    client_socket.send(
+                                        "Error: Must specify at least one valid member to kick\n".encode())
+                                    continue
+                                with lock:
+                                    if group_name not in groups:
+                                        client_socket.send(f"Error: Group '{group_name}' does not exist\n".encode())
+                                        continue
+                                    if username != groups[group_name]['owner']:
+                                        client_socket.send(
+                                            f"Error: You must be the owner of group '{group_name}' to kick members\n".encode())
+                                        continue
+                                    
+                                    valid_members = [m for m in members_to_kick if m in users and m in groups[group_name]['members'] and m != groups[group_name]['owner']]
+                                    no_such_members = [m for m in members_to_kick if m not in users]
+                                    not_in_group = [m for m in members_to_kick if m in users and m not in groups[group_name]['members']]
+                                    is_owner = [m for m in members_to_kick if m in users and m == groups[group_name]['owner']]
+
+                                    #Remove member
+                                    for member in valid_members:
+                                        groups[group_name]['members'].remove(member)
+                                    save_group()
+
+                                    if no_such_members:
+                                        client_socket.send(f"Warning: These users don't exist: {', '.join(no_such_members)}\n".encode())
+                                    if not_in_group:
+                                        client_socket.send(f"Warning: These users aren't in the group: {', '.join(not_in_group)}\n".encode())
+                                    if is_owner:
+                                        client_socket.send(f"Warning: Cannot kick the group owner\n".encode())
+
+                                    if valid_members:
+                                        response = f"Kicked {', '.join(valid_members)} from '{group_name}'"
+                                        client_socket.send(response.encode())
+
+                                        # notify the person that is being kicked
+                                        for kick_member in valid_members:
+                                            if kick_member in clients and kick_member != username:
+                                                clients[kick_member].send(f"You were removed from group '{group_name}' by {username}".encode())
+
+                                        # notify group members
+                                        notification = f"[Group {group_name}] {username} removed members: {', '.join(valid_members)}\n"
+                                        for member in groups[group_name]['members']:
+                                            if member != username and member in clients:
+                                                clients[member].send(notification.encode())
+                            except Exception as e:
+                                client_socket.send(f"Error removing members from group: {str(e)}\n".encode())
+    
                     else:
                         client_socket.send("Invalid command".encode())
-
                 else:
                     broadcast(f"{username}: {message}", client_socket)
             except socket.error:
@@ -293,9 +361,7 @@ def server_program():
         server.bind(SERVER)
         server.listen(5)
         server.settimeout(1)  # Set a timeout for the accept call
-
         print("Server started. Waiting for connections...")
-
         admin_thread = threading.Thread(target=admin_commands, daemon=True)
         admin_thread.start()
 
@@ -311,14 +377,12 @@ def server_program():
                 if shutdown_flag:
                     break
                 print(f"Error accepting connections: {e}")
-
         admin_thread.join()  # Wait for admin thread to finish
         print("Server main loop exited")
 
 def shutdown_server():
     global shutdown_flag
     shutdown_flag = True
-
     print("Shutting down server...")
 
     # Get all client sockets before clearing the dictionary
@@ -330,7 +394,6 @@ def shutdown_server():
                 client_socket.send("SHUTDOWN".encode())  # Send shutdown signal
             except:
                 pass
-
         clients.clear()
 
     # Close sockets after notifying all clients
@@ -344,7 +407,6 @@ def shutdown_server():
     # Wait a moment for threads to recognize the shutdown flag
     import time
     time.sleep(0.5)
-
     try:
         server.close()
     except:

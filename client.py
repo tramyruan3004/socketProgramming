@@ -16,7 +16,7 @@ def receive_messages(client_socket):
                 isShutdown = True
                 break
             if message == "SHUTDOWN":
-                print("Server is shutting down.")
+                print("Server is shutting down. Press [ENTER] to acknowledge.")
                 isShutdown = True  # Signal the main thread to stop
                 break
             print(message)
@@ -61,7 +61,6 @@ def client_program():
     try:
         while not isShutdown:  # Keep checking if we need to shut down
             readable, _, _ = select.select([sys.stdin], [], [], 0.1)
-
             if client in readable:  # Server sent a message
                 message = client.recv(1024).decode()
                 if not message or message == "SHUTDOWN":
@@ -69,7 +68,6 @@ def client_program():
                     isShutdown = True
                     break  # Exit loop
                 print(message)
-
             if sys.stdin in readable:  # User input is available
                 message = input()  # Use input() instead of sys.stdin.readline()
                 if message.lower() == '@quit':
@@ -78,12 +76,10 @@ def client_program():
                 if message:
                     print(f"Sending: {message}")
                     client.sendall(message.encode())
-
     finally:
         client.close()
         receive_thread.join()
     print("Disconnected from server.")
-
 
 if __name__ == '__main__':
     client_program()
