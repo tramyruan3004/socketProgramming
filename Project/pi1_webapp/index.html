@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dengue Monitoring Dashboard</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f4f4f9;
+            color: #333;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            flex-direction: column;
+        }
+        h1 {
+            color: #4CAF50;
+            margin-bottom: 20px;
+        }
+        .container {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+            max-width: 600px;
+            width: 100%;
+            text-align: center;
+        }
+        .sensor-data {
+            background: #f9f9f9;
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            text-align: left;
+            margin-top: 20px;
+        }
+        .refresh-info {
+            margin-top: 10px;
+            font-size: 0.9em;
+            color: #777;
+        }
+    </style>
+    <script>
+        function fetchData() {
+            fetch('/get_data')
+                .then(response => response.json())
+                .then(data => {
+                    let waterLevelStatus = data.floatSensorValue === 1 ? 'HIGH' : 'LOW';
+                    document.getElementById("waterLevel").innerText = `Water Level: ${waterLevelStatus}`;
+
+                    let soilMoistureValue = data.soilMoisture || 0;
+                    let soilMoisturePercentage = Math.max(((soilMoistureValue / 1024) * 100).toFixed(2), 0); // Ensure no negative values
+                    let soilMoistureStatus = soilMoistureValue === 0 ? 'DRY' :
+                                             soilMoistureValue > 750 ? 'VERY WET' :
+                                             soilMoistureValue > 600 ? 'WET' :
+                                             soilMoistureValue > 450 ? 'RELATIVELY MOIST' :
+                                             soilMoistureValue > 300 ? 'MOIST' : 'DRY';
+                    document.getElementById("soilMoisture").innerText = `Soil Moisture: ${soilMoistureStatus} (${soilMoisturePercentage}%) - (${soilMoistureValue})`;
+
+
+                    document.getElementById("humidity").innerText = `Humidity: ${data.humidity || 'N/A'}%`;
+                    document.getElementById("temperature").innerText = `Temperature: ${data.temperature || 'N/A'}°C`;
+
+                    let alertHeading = document.getElementById("alertHeading");
+                    if (data.floatSensorValue === 1 && data.temperature > 27.5 && data.humidity > 75.0 && data.soilMoisture > 750) {
+                        alertHeading.style.color = "red";
+                    } else if (data.floatSensorValue === 1 && data.temperature < 27.5 && data.humidity > 70.0 && data.soilMoisture > 600) {
+                        alertHeading.style.color = "orange";
+                    } else {
+                        alertHeading.style.color = "#4CAF50";
+                    }
+                })
+                .catch(error => console.error('Error fetching data:', error));
+        }
+
+        fetchData();
+        setInterval(fetchData, 10000);
+    </script>
+</head>
+<body>
+    <div class="container">
+        <h1 id="alertHeading">Dengue Alert!</h1>
+        <div class="sensor-data">
+            <p id="waterLevel">Water Level: N/A</p>
+            <p id="humidity">Humidity: N/A</p>
+            <p id="soilMoisture">Soil Moisture: N/A</p>
+            <p id="temperature">Temperature: N/A</p>
+        </div>
+        <div class="refresh-info">Data refreshes every 10 seconds.</div>
+    </div>
+</body>
+</html>
