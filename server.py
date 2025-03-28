@@ -30,35 +30,60 @@ def save_user(username, password):
 
 def authenticate(client_socket):
     load_user()
-    client_socket.send("Login (L) or Register (R): ".encode())
-    choice = client_socket.recv(1024).decode().strip().lower()
+    username = None
+    pass_auth = False
 
-    while choice not in ["l", "r"]:
-        client_socket.send("Invalid choice. Please enter 'L' to login and 'R' to register: ".encode())
+    auth = False
+    while not auth:
+        client_socket.send("Login (L) or Register (R): ".encode())
         choice = client_socket.recv(1024).decode().strip().lower()
 
-    client_socket.send("Enter username: ".encode())
-    username = client_socket.recv(1024).decode().strip()
+        while choice not in ["l", "r"]:
+            client_socket.send("Invalid choice. Please enter 'L' to login and 'R' to register: ".encode())
+            choice = client_socket.recv(1024).decode().strip().lower()
 
-    if choice == "r":
-        if username in users:
-            client_socket.send("Username already exists! Please try again.\n".encode())
-            return None
-        client_socket.send("Enter password: ".encode())
-        password = client_socket.recv(1024).decode().strip()
-        save_user(username, password)
-        client_socket.send("Registration successful! You are now logged in.\n".encode())
-    elif choice == "l":
-        if username not in users:
-            client_socket.send("User not found. Try again.\n".encode())
-            return None
-        client_socket.send("Enter password: ".encode())
-        password = client_socket.recv(1024).decode().strip()
-        if hash_password(password) != users[username]:
-            client_socket.send("Incorrect password. Try again.\n".encode())
-            return None
-        client_socket.send("Login successful! Welcome.\n".encode())
-    return username
+        client_socket.send("Enter username: ".encode())
+        username = client_socket.recv(1024).decode().strip()
+
+        if choice == "r":
+            if username in users:
+                client_socket.send("Username already exists! If this is your account, please go to the login page. If not, please use a different username.\n".encode())
+                continue
+            client_socket.send("Enter password, or type 'exit' to return to the login page: ".encode())
+            password = client_socket.recv(1024).decode().strip()
+            if password.lower() == "exit":
+                continue
+            else:
+                pass_auth = True
+                save_user(username, password)
+            if pass_auth:
+                client_socket.send("Registration successful! You are now logged in.\n".encode())
+                auth = True
+
+        elif choice == "l":
+            if username not in users:
+                client_socket.send("User not found. Try again.\n".encode())
+                continue
+            if username in clients:
+                client_socket.send("User already logged in on a different device. Try again.\n".encode())
+                continue
+
+            while not pass_auth:
+                client_socket.send(f"Enter password for user {username}, or type 'exit' to return to the login page: ".encode())
+                password = client_socket.recv(1024).decode().strip()
+                if password.lower() == "exit":
+                    break
+                elif hash_password(password) != users[username]:
+                    client_socket.send("Incorrect password. Try again.\n".encode())
+                    continue
+                else:
+                    pass_auth = True
+            if pass_auth:
+                client_socket.send("Login successful! Welcome.\n".encode())
+                auth = True
+
+    if username and pass_auth:
+        return username
 
 def save_group():
     serializable_groups = {}

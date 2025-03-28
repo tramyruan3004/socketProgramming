@@ -1,10 +1,17 @@
 {
-    "name": {
+    "ggg": {
         "members": [
             "lixuan",
-            "joey",
-            "sara"
+            "joey"
         ],
-        "owner": "sara"
+        "owner": "joey"
+    },
+    "hhh": {
+        "members": [
+            "lixuan",
+            "sara",
+            "joey"
+        ],
+        "owner": "lixuan"
     }
 }
