@@ -275,14 +275,20 @@ def handle_client(client_socket):
                                 client_socket.send(f"Error leaving group: {str(e)}\n".encode())
 
                         elif subcmd == "delete":
-                            group_name = group_parts[1]
-                            with lock:
-                                if group_name in groups and groups[group_name]['owner'] == username:
-                                    del groups[group_name]
-                                    save_group()
-                                    client_socket.send(f"Deleted group {group_name}".encode())
-                                else:
-                                    client_socket.send("Not authorized or group doesn't exist".encode())
+                            try:
+                                if len(group_parts) < 2:
+                                    client_socket.send("Error missing group name\n".encode())
+                                    continue
+                                group_name = group_parts[1]
+                                with lock:
+                                    if group_name in groups and groups[group_name]['owner'] == username:
+                                        del groups[group_name]
+                                        save_group()
+                                        client_socket.send(f"Deleted group {group_name}".encode())
+                                    else:
+                                        client_socket.send("Not authorized or group doesn't exist".encode())
+                            except Exception as e:
+                                client_socket.send(f"Error deleting group: {str(e)}\n".encode())
 
                         elif subcmd == "add":
                             try:

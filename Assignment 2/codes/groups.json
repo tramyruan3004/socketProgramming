@@ -9,9 +9,17 @@
     "hhh": {
         "members": [
             "lixuan",
-            "sara",
-            "joey"
+            "joey",
+            "sara"
         ],
         "owner": "lixuan"
+    },
+    "friends": {
+        "members": [
+            "peter",
+            "stella",
+            "john"
+        ],
+        "owner": "stella"
     }
 }
